@@ -1,0 +1,1942 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no" />
+<title>가로형 RPG - 자동사냥 + 토끼 전투 (v3)</title>
+<style>
+  html,body{margin:0;padding:0;width:100%;height:100%;background:#000;overflow:hidden;touch-action:none;}
+  canvas{display:block;width:100vw;height:100vh;image-rendering:pixelated;image-rendering:crisp-edges;}
+
+  /* === TITLE OVERLAY === */
+  .titleOverlay{
+    position:fixed; inset:0;
+    background:rgba(0,0,0,0.92); /* 불투명에 가깝게 */
+    display:flex; align-items:center; justify-content:center;
+    z-index:9999;
+  }
+  .titleCard{
+    width:min(520px, 92vw);
+    display:flex; flex-direction:column; align-items:center; gap:18px;
+    padding:24px 18px;
+  }
+  .gameTitle{
+    color:#fff;
+    font:800 clamp(34px, 6vw, 56px)/1.05 system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans KR", sans-serif;
+    letter-spacing:-0.02em;
+    text-shadow:0 6px 24px rgba(0,0,0,.55);
+  }
+  .startBtn{
+    appearance:none; border:none; cursor:pointer;
+    padding:14px 22px;
+    width:min(320px, 78vw);
+    border-radius:16px;
+    color:#fff;
+    font:700 18px/1 system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans KR", sans-serif;
+    background:rgba(255,255,255,0.08);
+    outline:2px solid rgba(255,255,255,0.16);
+    box-shadow:0 10px 30px rgba(0,0,0,.35);
+    transition:transform .08s ease, outline-color .12s ease, background .12s ease;
+  }
+  .startBtn:hover{
+    background:rgba(255,255,255,0.12);
+    outline-color:rgba(255,255,255,0.28);
+  }
+  .startBtn:active{ transform:translateY(1px) scale(0.99); }
+  .startBtn:focus-visible{
+    outline-color:rgba(120,220,255,0.75);
+    box-shadow:0 0 0 4px rgba(120,220,255,0.25), 0 10px 30px rgba(0,0,0,.35);
+  }
+  .hint{
+    color:rgba(255,255,255,0.65);
+    font:500 13px/1.35 system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans KR", sans-serif;
+    text-align:center;
+  }
+
+  .ui{
+    position:fixed;left:12px;top:10px;color:#eee;font:14px system-ui,sans-serif;
+    background:rgba(0,0,0,.45);padding:8px 10px;border-radius:10px;user-select:none;
+  }
+
+    
+
+  /* === TWITCH CHAT HUD (semi-transparent) === */
+  #twChatHud{
+    position:fixed;
+    left:12px;
+    bottom:12px;
+    width:220px;
+    height:360px;
+    background:transparent;
+    z-index:9000;
+    pointer-events:auto;
+    border-radius:12px;
+    overflow:hidden;
+  }
+  #twChatHud iframe{
+    width:100%;
+    height:100%;
+    border:0;
+    background:transparent;
+    opacity:0.85;            /* ✅ 대표님 요청: 최대한 반투명 */
+  }
+  @media (max-width: 520px){
+    #twChatHud{ left:10px; bottom:10px; width:200px; height:320px; }
+  }
+
+  /* ✅ TWITCH CHAT RESIZE HANDLE */
+  #twChatHud{ box-sizing:border-box; }
+  #twResizeHandle{
+    position:absolute;
+    right:32px;  top:6px;
+    width:18px; height:18px;
+    border-radius:6px;
+    background:rgba(255,255,255,0.14);
+    outline:1px solid rgba(255,255,255,0.22);
+    box-shadow:0 6px 16px rgba(0,0,0,0.35);
+    cursor:nwse-resize;
+    pointer-events:auto;
+    touch-action:none;
+  }
+  #twResizeHandle::before{
+    content:"";
+    position:absolute;
+    right:4px;  top:4px;
+    width:10px; height:10px;
+    border-right:2px solid rgba(255,255,255,0.45);
+    border-top:2px solid rgba(255,255,255,0.45);
+    border-radius:2px;
+    opacity:0.9;
+  }
+
+
+/* === VIRTUAL JOYSTICK (touch + mouse) === */
+#joy{
+  position:fixed; left:0; top:0; width:100%; height:100%;
+  z-index:9500; pointer-events:none;
+}
+#joyBase, #joyKnob{
+  position:absolute; border-radius:999px;
+  transform:translate(-50%,-50%);
+  display:none;
+}
+#joyBase{
+  width:120px; height:120px;
+  background:rgba(0,0,0,0.30);
+  outline:2px solid rgba(255,255,255,0.18);
+  backdrop-filter: blur(1px);
+}
+#joyKnob{
+  width:58px; height:58px;
+  background:rgba(255,255,255,0.10);
+  outline:2px solid rgba(255,255,255,0.22);
+}
+@media (max-width: 520px){
+  #joyBase{ width:108px; height:108px; }
+  #joyKnob{ width:52px; height:52px; }
+}
+
+
+
+/* === CHAT TOGGLE BUTTON (always top-left-bottom over canvas) === */
+#chatToggleBtn{
+  position:fixed;
+  left:12px;
+  bottom:12px;
+  z-index:9500;
+  pointer-events:auto;
+  appearance:none;
+  border:none;
+  cursor:pointer;
+  padding:10px 12px;
+  border-radius:14px;
+  color:rgba(255,255,255,0.92);
+  font:700 13px/1 system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans KR", sans-serif;
+  background:rgba(0,0,0,0.40);
+  outline:1px solid rgba(255,255,255,0.18);
+  box-shadow:0 10px 24px rgba(0,0,0,0.40);
+  backdrop-filter: blur(2px);
+  -webkit-tap-highlight-color: transparent;
+}
+#chatToggleBtn:active{ transform: translateY(1px) scale(0.99); }
+@media (max-width: 520px){
+  #chatToggleBtn{ left:10px; bottom:10px; padding:9px 11px; font-size:12px; }
+}
+
+/* === CHAT COLLAPSE / EXPAND ANIMATION === */
+#twChatHud{
+  transform-origin: left bottom;
+  transition: transform 260ms ease, opacity 260ms ease;
+  will-change: transform, opacity;
+}
+#twChatHud.collapsed{
+  opacity:0;
+  transform: translate(-14px, 14px) scale(0.08);
+  pointer-events:none; /* ✅ 접히면 클릭 안됨 */
+}
+#twChatHud.collapsed #twResizeHandle{ display:none; }
+
+
+/* === TOP-LEFT HP/MP HUD === */
+#statHud{
+  position:fixed;
+  left:12px;
+  top:16px; 
+  z-index:9000;
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  pointer-events:none;
+  user-select:none;
+}
+.hudBar{
+  width:110px;
+  height:11px;
+  border-radius:8px;
+  background:rgba(0,0,0,0.38);
+  
+  box-shadow:0 10px 22px rgba(0,0,0,0.35);
+  overflow:hidden;backdrop-filter:blur(2px);
+}
+.hudFill{height:100%;width:100%;border-radius:8px;transform-origin:left center;}
+.hudFill.hp{background:linear-gradient(90deg, rgba(255,70,70,0.92), rgba(255,120,120,0.85));}
+.hudFill.mp{background:linear-gradient(90deg, rgba(80,150,255,0.92), rgba(130,190,255,0.85));}
+
+.hudFill.exp{background:linear-gradient(90deg, rgba(255,210,80,0.95), rgba(255,235,150,0.9));}
+.hudText{
+  position:absolute; inset:0;
+  color:rgba(255,255,255,0.92);
+  font:700 9px/1 system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans KR",sans-serif;
+  letter-spacing:0.02em;
+  text-shadow:0 2px 10px rgba(0,0,0,0.45);
+}
+.hudText .label{
+  position:absolute; left:6px; top:50%; transform:translateY(-50%);
+  white-space:nowrap;
+}
+.hudText .value{
+  position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+  white-space:nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.hudBar.hp{ border:1px solid rgba(255,90,90,0.95); }
+.hudBar.mp{ border:1px solid rgba(90,150,255,0.95); }
+.hudBar.exp{ border:1px solid rgba(255,215,90,0.95); }
+
+</style>
+<meta http-equiv="Content-Security-Policy"
+      content="frame-src https://www.twitch.tv https://player.twitch.tv; child-src https://www.twitch.tv https://player.twitch.tv;">
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<div id="statHud">
+  <div class="hudBar hp" style="position:relative;">
+    <div id="hpFill" class="hudFill hp"></div>
+    <div class="hudText"><span class="label">HP:</span><span id="hpText" class="value">0/0</span></div>
+  </div>
+  <div class="hudBar mp" style="position:relative;">
+    <div id="mpFill" class="hudFill mp"></div>
+    <div class="hudText"><span class="label">MP:</span><span id="mpText" class="value">0/0</span></div>
+  </div>
+  <div class="hudBar exp" style="position:relative;">
+    <div id="expFill" class="hudFill exp"></div>
+    <div class="hudText"><span class="label">EXP:</span><span id="expText" class="value">0/0</span></div>
+  </div>
+
+</div>
+
+
+
+<!-- ✅ 가상 조이스틱 (모바일/PC 공용: 터치/마우스 누르면 생성) -->
+<div id="joy" aria-hidden="true">
+  <div id="joyBase"></div>
+  <div id="joyKnob"></div>
+</div>
+
+<!-- ✅ 채팅 접기/펼치기 버튼 (항상 최상단) -->
+<button id="chatToggleBtn" type="button" aria-label="채팅 접기/펼치기" aria-pressed="true">채팅 접기</button>
+
+
+<!-- ✅ 트위치 채팅 HUD (좌측 하단 고정 / 반투명) -->
+<div id="twChatHud" aria-label="twitch chat hud">
+  <iframe id="twChatFrame" allow="autoplay" loading="lazy"></iframe>
+  <div id="twResizeHandle" title="Resize chat" aria-label="resize chat"></div>
+</div>
+
+
+
+<iframe id="twitchChatIframe" class="twitchChatIframe" allow="autoplay" loading="lazy"></iframe>
+</div>
+
+
+<!-- ✅ 최초 진입 타이틀 화면 -->
+<div id="titleOverlay" class="titleOverlay" aria-label="title screen">
+  <div class="titleCard">
+    <div class="gameTitle">전사키우기</div>
+    <button id="startBtn" class="startBtn" type="button">Start</button>
+    <div id="startHint" class="hint">버튼을 누르면 전체화면으로 전환 후 게임이 시작됩니다.</div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+
+  const overlay = document.getElementById('titleOverlay');
+  const startBtn = document.getElementById('startBtn');
+  const startHint = document.getElementById('startHint');
+
+  let started = false;
+  let assetsReady = false;
+
+  function resize(){
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    canvas.width = Math.floor(innerWidth * dpr);
+    canvas.height = Math.floor(innerHeight * dpr);
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    ctx.imageSmoothingEnabled = false;
+  }
+  addEventListener('resize', resize, {passive:true});
+  resize();
+
+  // ====== ASSETS ======
+
+  // ====== BGM ======
+  const bgm = new Audio('bgm.ogg');
+  bgm.loop = true;
+  bgm.volume = 0.5;
+
+
+  // ====== FOOTSTEP SFX ======
+
+  // ====== ATTACK SFX ======
+  const attackSfx = new Audio('kal.ogg');
+  attackSfx.volume = 0.6;
+
+// ====== KI-HAP SFX (random shout) ======
+  const kihapSfx = new Audio('kihap.wav');
+  kihapSfx.volume = 0.7;
+
+
+  // ====== HIT SFX (monster hit) ======
+  const hitSfx = new Audio('hit.ogg');
+  hitSfx.volume = 0.6;
+
+  // ====== CRIT SFX ======
+  const critSfx = new Audio('crt.wav');
+  critSfx.volume = 0.75;
+
+// ====== RABBIT DEATH SFX ======
+  const rabbitDeathSfx = new Audio('ttoki4.wav');
+  rabbitDeathSfx.volume = 0.7;
+
+
+  // ====== DEATH SFX (player death) ======
+  const deathSfx = new Audio('samang.wav');
+  deathSfx.volume = 0.7;
+
+  const footstep = new Audio('balsori.ogg');
+  footstep.volume = 0.45;
+  let lastStepTime = 0;
+  const STEP_INTERVAL = 0.28; // 발소리 간격(초)
+
+  const heroImg = new Image(); heroImg.src = 'hero.png';
+  const grassImg = new Image(); grassImg.src = 'grass.png';
+  const rabbitImg = new Image(); rabbitImg.src = 'rabbit.png';
+  const treeImg = new Image(); treeImg.src = 'tree.png'; // 투명 배경 나무 이미지
+
+  let loaded = 0;
+  const NEED = 4;
+  function onLoaded(){
+    loaded++;
+    if (loaded >= NEED){
+      assetsReady = true;
+      startBtn.disabled = false;
+      startHint.textContent = "Start를 누르면 바로 시작됩니다.";
+    }
+  }
+  heroImg.onload = onLoaded; grassImg.onload = onLoaded; rabbitImg.onload = onLoaded; treeImg.onload = onLoaded;
+
+  function onAssetError(name){
+    return () => alert(name + " 파일을 찾을 수 없습니다. 이 html과 같은 폴더에 두고 파일명을 정확히 맞춰주세요.");
+  }
+  heroImg.onerror = onAssetError('hero.png');
+  grassImg.onerror = onAssetError('grass.png');
+  rabbitImg.onerror = onAssetError('rabbit.png');
+  treeImg.onerror = onAssetError('tree.png');
+
+  // ====== UTILS ======
+  const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
+  const rand = (a,b)=>a+Math.random()*(b-a);
+  const dist2 = (ax,ay,bx,by)=>{const dx=ax-bx,dy=ay-by;return dx*dx+dy*dy;};
+
+
+  // ====== LEVEL SYSTEM (Lv1->100, target ~2 months) ======
+  const MAX_LEVEL = 100;
+
+  // EXP needed to go from 'level' to 'level+1'
+  // ✅ Must satisfy: needExp(1) = 30 (대표님 확정값)
+  function needExp(level){
+    level = Math.max(1, Math.min(MAX_LEVEL, level|0));
+    if (level <= 30){
+      const L = level - 1;
+      return Math.floor(30 + 7*L + 1*(L*L));
+    } else if (level <= 70){
+      const L = level - 30;
+      return Math.floor(1200 + 60*L + 6*(L*L));
+    } else {
+        // ✅ 접촉이 풀리면(특히 치명타 넉백 이후) 'attack' 상태로 방황하지 않게 즉시 추적으로 복귀
+        if (rb.state === 'attack'){
+          if (dd <= d2) rb.state = 'chase';
+          else { rb.state = 'wander'; pickWander(rb); }
+        }
+const L = level - 70;
+      return Math.floor(15000 + 900*L + 90*(L*L) + 4*(L*L*L));
+    }
+  }
+
+  // Player stat scaling (Lv1 fixed: HP50 / MP20 / DMG2)
+  function applyPlayerStatsForLevel(){
+    const lv = player.level|0;
+
+    // ✅ Lv1 fixed: HP50 / MP20
+    player.hpMax = 50 + 5*(lv-1);
+    player.mpMax = 20 + 2*(lv-1);
+
+    // ✅ EXP needed for next level (Lv1 => 30)
+    player.expMax = needExp(lv);
+
+    // clamp current values
+    player.hp = Math.min(player.hp, player.hpMax);
+    player.mp = Math.min(player.mp, player.mpMax);
+    player.exp = Math.max(0, player.exp|0);
+  }
+
+  // ====== EQUIPMENT STATS (item-only combat stats) ======
+  // 레벨업으로 변하는 것: HP/MP/EXP(필요치)만
+  // 아이템으로 변하는 것: atk/def/hit/eva/critChance/critMult
+  const equipment = {
+    weapon:    { name:"맨손", atk:2, def:0, hit:0, eva:0, critChance: 0.00, critMult:1.50 },
+    armor:     { name:"천옷", atk:0, def:0, hit:0, eva:0, critChance:0.00, critMult:0.00 },
+    accessory: { name:"없음", atk:0, def:0, hit:0, eva:0, critChance:0.00, critMult:0.00 },
+  };
+
+  function recalcCombatStats(){
+    const w = equipment.weapon || {};
+    const a = equipment.armor || {};
+    const x = equipment.accessory || {};
+
+    player.atk = (w.atk||0) + (a.atk||0) + (x.atk||0);
+    player.def = (w.def||0) + (a.def||0) + (x.def||0);
+    player.hit = (w.hit||0) + (a.hit||0) + (x.hit||0);
+    player.eva = (w.eva||0) + (a.eva||0) + (x.eva||0);
+
+    // 확률/배수는 합산 후 안전 범위로 클램프
+    player.critChance = Math.max(0, Math.min(0.95, (w.critChance||0) + (a.critChance||0) + (x.critChance||0)));
+    // critMult는 "추가치"가 아니라 "최종 배수"로 쓰는게 편함
+    // 기본은 1.50 (150%)이고, 아이템은 +0.10 같은 방식으로 더해도 됨
+    const baseMult = (w.critMult && w.critMult > 0) ? w.critMult : 1.50;
+    const addMult  = (a.critMult||0) + (x.critMult||0);
+    player.critMult = Math.max(1.10, Math.min(3.00, baseMult + addMult));
+
+    // 기존 코드 호환용: dmg를 쓰는 부분이 있다면 dmg=atk로 유지
+    player.dmg = player.atk;
+  }
+
+  function equipItem(slot, item){
+    if (!equipment[slot]) return;
+    equipment[slot] = {
+      name: item.name || "아이템",
+      atk: item.atk||0,
+      def: item.def||0,
+      hit: item.hit||0,
+      eva: item.eva||0,
+      critChance: item.critChance||0,
+      critMult: item.critMult||0,
+    };
+    recalcCombatStats();
+  }
+
+  // 명중/회피 판정: hit-eva 기반 (튜닝 쉬움)
+  function rollHit(attackerHit, defenderEva){
+    // base 85% + (hit-eva)*2% (최소 10%, 최대 95%)
+    const p = Math.max(0.10, Math.min(0.95, 0.85 + (attackerHit - defenderEva) * 0.02));
+    return Math.random() < p;
+  }
+  function rollCrit(chance){
+    return Math.random() < Math.max(0, Math.min(0.95, chance||0));
+  }
+  function calcDamageWithCrit(atk, def, critChance, critMult){
+    let dmg = Math.max(1, (atk||0) - (def||0));
+    const isCrit = rollCrit(critChance);
+    if (isCrit){
+      const mult = (critMult||1.5);
+      // ✅ 체감용: 크리면 최소 +1 보정 (낮은 데미지에서도 확실히 달라짐)
+      dmg = Math.max(dmg + 1, Math.floor(dmg * mult));
+    }
+    return { dmg, isCrit };
+  }
+
+  // 기존 호환용: dmg만 필요한 곳은 이걸 써도 됨
+  function calcDamage(atk, def, critChance, critMult){
+    return calcDamageWithCrit(atk, def, critChance, critMult).dmg;
+  }
+
+
+  function levelUpOnce(){
+    if ((player.level|0) >= MAX_LEVEL){
+      player.level = MAX_LEVEL;
+      player.exp = Math.min(player.exp, player.expMax);
+      return false;
+    }
+    player.level += 1;
+    applyPlayerStatsForLevel();
+    recalcCombatStats();
+
+    // 레벨업 보상: 풀회복
+    player.hp = player.hpMax;
+    player.mp = player.mpMax;
+    return true;
+  }
+
+  // Rabbit scaling by level (simple & tunable)
+  function makeRabbitStats(mobLevel){
+    mobLevel = Math.max(1, Math.min(MAX_LEVEL, mobLevel|0));
+    const hpMax = 10 + 3*(mobLevel-1);
+    const atk   = 1 + Math.floor((mobLevel-1)/10);
+    const def   = Math.floor((mobLevel-1)/15); // 완만
+    const expGive = 6 + 2*(mobLevel-1);
+    return { level: mobLevel, hpMax, atk, def, dmg: atk, expGive };
+  }
+
+  function rollRabbitLevel(){
+    // player 레벨 근처로 스폰 (±1)
+    const r = Math.random();
+    const delta = (r < 0.33) ? -1 : (r < 0.66 ? 0 : 1);
+    return clamp((player.level|0) + delta, 1, MAX_LEVEL);
+  }
+
+  // ====== TREES (맵 바깥 장식용) ======
+  const TREES_N = 30;
+  const trees = [];
+  const TREE_SIZE = 96; // 나무 그려질 크기
+  const OUT_MARGIN = 120; // 맵 바깥 여유
+
+  function resolveCircle(a,b,minDist){
+    const dx = b.x-a.x, dy = b.y-a.y;
+    const d = Math.hypot(dx,dy);
+    if (d === 0 || d >= minDist) return false;
+    const nx = dx/d, ny = dy/d;
+    const push = (minDist - d)/2;
+    a.x -= nx*push; a.y -= ny*push;
+    b.x += nx*push; b.y += ny*push;
+    return true;
+  }
+
+  // ✅ 플레이어만 밀어내는 원형 충돌(몹이 도망가는 것처럼 보이는 현상 방지)
+  // mover(플레이어)만 위치를 보정하고, obstacle(몹)은 그대로 둡니다.
+  function resolveCircleStatic(mover, obstacle, minDist){
+    const dx = mover.x - obstacle.x;
+    const dy = mover.y - obstacle.y;
+    const d = Math.hypot(dx, dy);
+    if (d === 0 || d >= minDist) return false;
+    const nx = dx / d, ny = dy / d;
+    const push = (minDist - d);
+    mover.x += nx * push;
+    mover.y += ny * push;
+    return true;
+  }
+
+
+  function vecToDir(vx,vy){
+    if (Math.abs(vx) > Math.abs(vy)) return vx>0 ? DIR.RIGHT : DIR.LEFT;
+    return vy>0 ? DIR.DOWN : DIR.UP;
+  }
+
+  function drawHpBar(screenX, screenY, w, h, ratio, fill){
+    ctx.fillStyle = "rgba(0,0,0,0.6)";
+    ctx.fillRect(screenX, screenY, w, h);
+    ctx.fillStyle = fill;
+    ctx.fillRect(screenX, screenY, Math.max(0, Math.min(1, ratio))*w, h);
+  }
+
+  // ====== MAP ======
+  const MAP_W = 700, MAP_H = 700;
+  const TILE = 64;
+
+  // ====== SPRITE ======
+  const HERO_FW = 50, HERO_FH = 50;
+  const WALK_START = 0, WALK_LEN = 4;
+  const ATK_START  = 4, ATK_LEN  = 4;
+  const DIR = { DOWN:0, LEFT:1, RIGHT:2, UP:3 };
+
+  // ====== RABBITS ======
+  const RABBITS_N = 10;
+  const rabbits = [];
+
+  const R = {
+    cols: 4, rows: 4,
+    fw: 0, fh: 0,
+    speedWander: 0.4,
+    speedChase:  0.7,
+    detectRadius: 130,
+    giveUpRadius: 170,
+    wanderChangeMin: 0.7,
+    wanderChangeMax: 1.8,
+    animFPS: 8,
+    r: 14,
+    hpMax: 10,
+    dmg: 1,
+    atkInterval: 0.9,
+    fadeSpeed: 0.67,
+    respawnDelay: 10,
+    expGive: 6
+  };
+
+  function pickWander(rb){
+    const a = Math.random()*Math.PI*2;
+    rb.vx = Math.cos(a);
+    rb.vy = Math.sin(a);
+    rb.tWander = rand(R.wanderChangeMin, R.wanderChangeMax);
+  }
+
+  function newRabbit(){
+    const mobLv = rollRabbitLevel();
+    const st = makeRabbitStats(mobLv);
+    const rb = {
+      x: rand(20, MAP_W-20),
+      y: rand(20, MAP_H-20),
+      vx: 0, vy: 0,
+      dir: DIR.DOWN,
+      frame: Math.floor(Math.random()*4),
+      tAnim: 0,
+      state: 'wander',
+      tWander: rand(R.wanderChangeMin, R.wanderChangeMax),
+      level: st.level,
+      hpMax: st.hpMax,
+      hp: st.hpMax,
+      atk: st.atk,
+      def: st.def,
+      dmg: st.dmg,
+      atkCooldown: rand(0, R.atkInterval),
+      alpha: 1,
+      expGive: st.expGive,
+      respawnT: 0,
+      kbVx: 0,
+      kbVy: 0,
+      kbT: 0
+    };
+    pickWander(rb);
+    return rb;
+  }
+
+  function spawnRabbits(){
+    rabbits.length = 0;
+    for (let i=0;i<RABBITS_N;i++) rabbits.push(newRabbit());
+  }
+
+  function rabbitRespawn(rb){
+    rb.x = rand(20, MAP_W-20);
+    rb.y = rand(20, MAP_H-20);
+    const mobLv = rollRabbitLevel();
+    const st = makeRabbitStats(mobLv);
+    rb.level = st.level;
+    rb.hpMax = st.hpMax;
+    rb.atk = st.atk;
+    rb.def = st.def;
+    rb.dmg = st.dmg;
+    rb.expGive = st.expGive;
+    rb.hp = rb.hpMax;
+    rb.alpha = 1;
+    rb.state = 'wander';
+    rb.atkCooldown = rand(0, R.atkInterval);
+    pickWander(rb);
+  }
+
+  // ====== PLAYER ======
+  const player = {
+    x: MAP_W/2, y: MAP_H/2,
+    r: 16,
+    dir: DIR.DOWN,
+    walkFrame: 0,
+    atkFrame: 0,
+    animT: 0,
+    attacking: false,
+    level: 1,
+    hpMax: 50,
+    hp: 50,
+    mpMax: 20,
+    mp: 20,
+    expMax: 30,
+    exp: 0,
+    // 전투 스탯(아이템 합산)
+    atk: 2,
+    def: 0,
+    hit: 0,
+    eva: 0,
+    critChance: 0,
+    critMult: 1.5,
+    speed: R.speedChase,
+    alpha: 1,
+    state: 'alive',
+    respawnT: 0,
+    respawnDelay: 2,
+
+    atkCooldown: 0,
+    atkInterval: 0.55,
+    dmg: 2,
+    auto: true,
+    autoDelay: 0,        // 자동사냥 지연 타이머
+    autoDelayTime: 1.0,
+  };
+
+  // expose for HUD updater (outside IIFE)
+  window.player = player;
+
+  // init stats (Lv1 fixed) + item-only combat stats
+  applyPlayerStatsForLevel();
+  recalcCombatStats();
+  player.hp = player.hpMax;
+  player.mp = player.mpMax;
+
+  const keys = Object.create(null);
+  let manualMove = false;
+
+  addEventListener('keydown', (e) => {
+    if (!started) return; // 타이틀 화면에선 입력 막기
+    keys[e.key] = true;
+    if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','w','a','s','d','W','A','S','D'].includes(e.key)) manualMove = true;
+    if (e.key === ' ') { e.preventDefault(); tryPlayerAttack(); }
+  }, {passive:false});
+  addEventListener('keyup', (e) => {
+    if (!started) return;
+    keys[e.key] = false;
+    manualMove = (keys['ArrowUp']||keys['ArrowDown']||keys['ArrowLeft']||keys['ArrowRight']||
+                  keys['w']||keys['a']||keys['s']||keys['d']||keys['W']||keys['A']||keys['S']||keys['D']) || false;
+  }, {passive:true});
+
+
+// ====== VIRTUAL JOYSTICK (touch + mouse: 아무 곳이나 누르면 생성) ======
+const joy = {
+  active:false,
+  pointerId:null,
+  baseX:0, baseY:0,
+  knobX:0, knobY:0,
+  vx:0, vy:0,
+  mag:0,
+  radius:60,
+  deadZone:0.12, // 0~1 (작을수록 민감)
+  downT:0,
+  moved:false,
+};
+
+const joyEl = document.getElementById('joy');
+const joyBaseEl = document.getElementById('joyBase');
+const joyKnobEl = document.getElementById('joyKnob');
+
+function isUIHit(target){
+  // 채팅 HUD/타이틀 버튼 등 UI 클릭은 조이스틱 방해하지 않게 예외 처리
+  return !!(target && (target.closest('#chatToggleBtn') || target.closest('#twChatHud') || target.closest('#titleOverlay') || target.closest('.startBtn')));
+}
+
+function showJoy(x, y){
+  joy.radius = (innerWidth <= 520) ? 54 : 60;
+  joy.baseX = x; joy.baseY = y;
+  joy.knobX = x; joy.knobY = y;
+  joy.vx = 0; joy.vy = 0; joy.mag = 0;
+  joy.downT = performance.now();
+  joy.moved = false;
+
+  joyBaseEl.style.left = x + 'px';
+  joyBaseEl.style.top  = y + 'px';
+  joyKnobEl.style.left = x + 'px';
+  joyKnobEl.style.top  = y + 'px';
+  joyBaseEl.style.display = 'block';
+  joyKnobEl.style.display = 'block';
+}
+
+function hideJoy(){
+  joy.active = false;
+  joy.pointerId = null;
+  joy.vx = joy.vy = joy.mag = 0;
+  joyBaseEl.style.display = 'none';
+  joyKnobEl.style.display = 'none';
+}
+
+function moveJoy(x, y){
+  const dx = x - joy.baseX;
+  const dy = y - joy.baseY;
+  const d = Math.hypot(dx, dy) || 1;
+  const clamped = Math.min(joy.radius, d);
+  const nx = dx / d;
+  const ny = dy / d;
+
+  joy.knobX = joy.baseX + nx * clamped;
+  joy.knobY = joy.baseY + ny * clamped;
+
+  joyKnobEl.style.left = joy.knobX + 'px';
+  joyKnobEl.style.top  = joy.knobY + 'px';
+
+  joy.vx = nx;
+  joy.vy = ny;
+  joy.mag = clamp(clamped / joy.radius, 0, 1);
+  if (clamped > 6) joy.moved = true;
+}
+
+// 포인터 이벤트(모바일 터치 + PC 마우스) 통합
+addEventListener('pointerdown', (e) => {
+  if (!started) return;              // 타이틀 화면에서는 무시(버튼 클릭용)
+  if (isUIHit(e.target)) return;     // UI 위에서는 무시
+  if (e.button != null && e.button !== 0) return; // 마우스 좌클릭만
+
+  joy.active = true;
+  joy.pointerId = e.pointerId;
+  showJoy(e.clientX, e.clientY);
+
+  // 캔버스 드래그/텍스트 선택 방지
+  try { canvas.setPointerCapture(e.pointerId); } catch(_){}
+  e.preventDefault();
+}, {passive:false});
+
+addEventListener('pointermove', (e) => {
+  if (!joy.active) return;
+  if (joy.pointerId !== e.pointerId) return;
+  moveJoy(e.clientX, e.clientY);
+  e.preventDefault();
+}, {passive:false});
+
+function joyUpCommon(e){
+  if (!joy.active) return;
+  if (joy.pointerId !== e.pointerId) return;
+
+  const held = performance.now() - joy.downT;
+
+  // ✅ 짧게 탭(드래그 거의 없음) = 공격(기존 touchstart 공격을 대체)
+  if (!joy.moved && held < 220){
+    tryPlayerAttack();
+  }
+
+  hideJoy();
+  e.preventDefault();
+}
+
+addEventListener('pointerup', joyUpCommon, {passive:false});
+addEventListener('pointercancel', joyUpCommon, {passive:false});
+
+// ====== CAMERA ======
+  function camera(){
+    const vw = innerWidth, vh = innerHeight;
+    let camX = player.x - vw/2, camY = player.y - vh/2;
+    camX = (MAP_W <= vw) ? (MAP_W - vw)/2 : Math.max(0, Math.min(MAP_W - vw, camX));
+    camY = (MAP_H <= vh) ? (MAP_H - vh)/2 : Math.max(0, Math.min(MAP_H - vh, camY));
+    return {camX, camY, vw, vh};
+  }
+
+  // ====== PARTICLES (피 튐) ======
+  const particles = [];
+  function spawnBlood(px, py, boost=1){
+    const count = Math.max(1, Math.round(14 * (boost||1)));
+    for (let i=0;i<count;i++){
+      const a = Math.random()*Math.PI*2;
+      const sp = rand(40, 130);
+      particles.push({
+        x: px, y: py,
+        vx: Math.cos(a)*sp,
+        vy: Math.sin(a)*sp,
+        life: rand(0.25, 0.55),
+        t: 0,
+        r: rand(1.5, 3.2)
+      });
+    }
+  }
+  function updateParticles(dt){
+    for (let i=particles.length-1;i>=0;i--){
+      const p = particles[i];
+      p.t += dt;
+      p.vy += 220*dt;
+      p.x += p.vx*dt;
+      p.y += p.vy*dt;
+      if (p.t >= p.life) particles.splice(i,1);
+    }
+  }
+  function drawParticles(camX, camY){
+    ctx.save();
+    for (const p of particles){
+      const a = 1 - (p.t / p.life);
+      ctx.globalAlpha = Math.max(0, a);
+      ctx.fillStyle = "rgba(255,70,70,1)";
+      ctx.beginPath();
+      ctx.arc(p.x - camX, p.y - camY, p.r, 0, Math.PI*2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  // ====== DAMAGE TEXT PARTICLES (떠오르는 수치) ======
+  const dmgTexts = [];
+  function spawnDmgText(wx, wy, value, color, isCrit=false){
+    const v = Math.max(0, value|0);
+    dmgTexts.push({
+      x: wx,
+      y: wy,
+      vy: -rand(42, 78),          // 위로
+      vx: rand(-10, 10),          // 살짝 흔들
+      t: 0,
+      life: isCrit ? 0.55 : 0.75, // ✅ 크리는 더 빨리 사라짐
+      value: v,
+      color,
+      isCrit,
+      // ✅ 크리 수치: 처음에 크게 '팍' → 빠르게 줄어들도록 시작 스케일을 크게
+      scale: isCrit ? 2.15 : 1.0,
+    });
+  }
+
+function updateDmgTexts(dt){
+    for (let i=dmgTexts.length-1;i>=0;i--){
+      const d = dmgTexts[i];
+      d.t += dt;
+
+      // ✅ 크리 수치: 빠르게 줄어들며 안정
+      if (d.isCrit){
+        const target = 0.88;
+        d.scale += (target - d.scale) * (1 - Math.pow(0.00001, dt));
+      } else {
+        d.scale += (1.0 - d.scale) * (1 - Math.pow(0.00001, dt)); // pop->settle
+      }
+
+      d.x += d.vx * dt;
+      d.y += d.vy * dt;
+      d.vy += 55 * dt;
+      d.vx *= (1 - 3.2*dt);
+      if (d.t >= d.life) dmgTexts.splice(i,1);
+    }
+  }
+
+function drawDmgTexts(camX, camY){
+    ctx.save();
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+
+    for (const d of dmgTexts){
+      const p = d.t / d.life;
+      const a = 1 - p;
+
+      const sx = d.x - camX;
+      const sy = d.y - camY;
+
+      // 살짝 "팡" 튀는 느낌
+      const pop = d.isCrit ? ((p < 0.10) ? (1.0 + (0.10 - p) * 6.8) : 1.0)
+                        : ((p < 0.12) ? (1.0 + (0.12 - p) * 3.4) : 1.0);
+
+      ctx.globalAlpha = Math.max(0, a);
+
+      const base = d.isCrit ? 18 : 15;
+      const size = Math.round(base * d.scale * pop);
+      ctx.font = `800 ${size}px system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans KR", sans-serif`;
+
+      const text = String(d.value);
+
+      // outline
+      ctx.lineWidth = d.isCrit ? 6 : 5;
+      ctx.strokeStyle = "rgba(0,0,0,0.60)";
+      ctx.strokeText(text, sx, sy);
+
+      // fill
+      ctx.fillStyle = d.isCrit ? "rgba(255, 70, 70, 0.98)" : (d.color || "rgba(255,230,120,0.98)");
+      ctx.fillText(text, sx, sy);
+    }
+
+    ctx.restore();
+  }
+
+
+  // ====== FLOAT WORD PARTICLES (MISS/회피) ======
+  const wordTexts = [];
+  function spawnWordText(wx, wy, text, color){
+    wordTexts.push({
+      x: wx,
+      y: wy,
+      text: String(text || ""),
+      t: 0,
+      life: 0.55,
+      color: color || "rgba(200,200,200,0.95)",
+      scale: 0.75,      // 시작 작게
+      grow: 2.2,        // 점점 커짐
+      vy: -12,          // 거의 제자리(살짝 위)
+      vx: rand(-6, 6),
+    });
+  }
+  function updateWordTexts(dt){
+    for (let i=wordTexts.length-1;i>=0;i--){
+      const w = wordTexts[i];
+      w.t += dt;
+      w.x += w.vx * dt;
+      w.y += w.vy * dt;
+      w.vx *= (1 - 3.0*dt);
+      w.scale += w.grow * dt; // 점점 커짐
+      if (w.t >= w.life) wordTexts.splice(i,1);
+    }
+  }
+  function drawWordTexts(camX, camY){
+    ctx.save();
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    for (const w of wordTexts){
+      const p = w.t / w.life;
+      const a = 1 - p;
+      const sx = w.x - camX;
+      const sy = w.y - camY;
+
+      ctx.globalAlpha = Math.max(0, a);
+      ctx.font = `900 ${Math.round(16 * w.scale)}px system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans KR", sans-serif`;
+
+      // outline
+      ctx.lineWidth = 5;
+      ctx.strokeStyle = "rgba(0,0,0,0.60)";
+      ctx.strokeText(w.text, sx, sy);
+
+      // fill
+      ctx.fillStyle = w.color;
+      ctx.fillText(w.text, sx, sy);
+    }
+    ctx.restore();
+  }
+
+  // ====== CRIT TEXT POP (치명타) ======
+  const critTexts = [];
+  function spawnCritText(wx, wy, text="치명타"){
+    critTexts.push({
+      x: wx,
+      y: wy,
+      text: String(text||"치명타"),
+      t: 0,
+      life: 0.35,     // ✅ 더 짧게(빠르게 팍!)
+      scale: 0.22,    // ✅ 더 작게 시작했다가 팍!
+      vx: rand(-8, 8),
+      vy: -14
+    });
+  }
+  function updateCritTexts(dt){
+    for (let i=critTexts.length-1;i>=0;i--){
+      const c = critTexts[i];
+      c.t += dt;
+      c.x += c.vx * dt;
+      c.y += c.vy * dt;
+      c.vx *= (1 - 3.6*dt);
+      // 빠르게 커졌다가 살짝 안정
+      const p = c.t / c.life;
+      const target = (p < 0.10) ? 1.60 : 0.85;
+      c.scale += (target - c.scale) * (1 - Math.pow(0.00001, dt));
+      if (c.t >= c.life) critTexts.splice(i,1);
+    }
+  }
+  function drawCritTexts(camX, camY){
+    ctx.save();
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    for (const c of critTexts){
+      const p = c.t / c.life;
+      const a = 1 - p;
+      const sx = c.x - camX;
+      const sy = c.y - camY;
+
+      // 초반 팍! 확대
+      const pop = (p < 0.08) ? (1.0 + (0.08 - p) * 11.0) : 1.0;
+
+      ctx.globalAlpha = Math.max(0, a);
+      const size = Math.round(40 * c.scale * pop); // 여기 숫자 줄이면 전체 글자 크기 작아짐
+      ctx.font = `900 ${size}px system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans KR", sans-serif`;
+
+      // outline
+      ctx.lineWidth = 7;
+      ctx.strokeStyle = "rgba(0,0,0,0.65)";
+      ctx.strokeText(c.text, sx, sy);
+
+      // fill (진한 빨간색)
+      ctx.fillStyle = "rgba(255, 90, 210, 0.98)"; // ✅ 분홍색 톤
+      ctx.fillText(c.text, sx, sy);
+    }
+    ctx.restore();
+  }
+
+
+  // ====== COMBAT HELPERS ======
+  function nearestAliveRabbit(){
+    let best = null;
+    let bestD = Infinity;
+    for (const rb of rabbits){
+      if (rb.state === 'dead' || rb.state === 'respawn') continue;
+      if (rb.hp <= 0) continue;
+      const d = dist2(player.x, player.y, rb.x, rb.y);
+      if (d < bestD){ bestD = d; best = rb; }
+    }
+    return best;
+  }
+
+  const CONTACT = player.r + R.r + 1;
+  const CONTACT2 = CONTACT * CONTACT;
+
+
+  // ====== TWITCH CHAT: 전투 중 자동 투명 (깜빡임 방지 버전) ======
+  const twitchChatWrapEl = document.getElementById('twitchChatWrap');
+
+  // ✅ 히스테리시스(지연) 파라미터
+  const CHAT_FADE_IN_DELAY   = 0.12; // 전투 시작 판정이 연속으로 유지되면 ON
+  const CHAT_FADE_OUT_HOLD   = 0.60; // 전투가 끝나도 잠깐 유지 후 OFF
+  const CHAT_TOGGLE_COOLDOWN = 0.12; // 토글 최소 간격
+
+  let _chatCombatOn = false;
+  let _combatSeenT = 0;         // 전투가 "연속으로" 감지된 시간
+  let _noCombatT = 0;           // 전투가 "연속으로" 감지되지 않은 시간
+  let _toggleCooldownT = 0;     // 토글 쿨다운
+
+  function applyChatCombatFade(on){
+    if (!twitchChatWrapEl) return;
+    // ✅ 어떤 경우에도 combatFade는 사용하지 않음
+    twitchChatWrapEl.classList.remove('combatFade');
+  }
+
+  // 매 프레임 호출: inCombat 신호를 부드럽게(지연/유지) 처리
+  function updateChatCombatFade(inCombat, dt){ /* disabled */ }
+
+  function tryPlayerAttack(){
+    if (player.state !== 'alive') return;
+    if (player.atkCooldown > 0) return;
+
+    for (const rb of rabbits){
+      if (rb.hp <= 0 || rb.state === 'dead' || rb.state === 'respawn') continue;
+      const d = dist2(player.x, player.y, rb.x, rb.y);
+      if (d <= CONTACT2){
+        // ✅ 공격 대상(몹) 방향을 바라보고 공격 모션 시작
+        player.dir = vecToDir(rb.x - player.x, rb.y - player.y);
+
+        player.attacking = true;
+        player.atkFrame = 0;
+        player.animT = 0;
+        player.atkCooldown = player.atkInterval;
+
+        if (!rollHit(player.hit||0, rb.eva||0)){
+          // ✅ MISS 파티클(몬스터 몸에서 점점 커지며 사라짐)
+          spawnWordText(rb.x, rb.y - 18, "MISS", "rgba(180, 235, 255, 0.98)");
+          return;
+        }
+        const res = calcDamageWithCrit(player.atk||0, rb.def||0, player.critChance||0, player.critMult||1.5);
+        const dealt = res.dmg;
+        const isCrit = !!res.isCrit;
+        rb.hp -= dealt;
+
+        // ✅ 몹 피격 수치 파티클(팍 + 위로)
+        spawnDmgText(
+          rb.x, rb.y - 18,
+          dealt,
+          isCrit ? "rgba(255, 70, 70, 0.98)" : "rgba(255,235,120,0.98)",
+          isCrit
+        );
+
+        // ✅ 크리 연출: 치명타 텍스트 + 피 더 많이 + 순간 넉백 + 크리 사운드
+        if (isCrit){
+          spawnCritText(rb.x, rb.y - 34, "치명타");
+
+          // ✅ 히트스톱(0.05초)
+          hitStopT = Math.max(hitStopT, 0.05);
+
+          // ✅ 피 더 많이(치명타)
+          spawnBlood(rb.x, rb.y, 3.2);
+
+          // ✅ 넉백 제거: 사냥 흐름 방해 방지 (치명타는 텍스트/피/사운드만)
+
+          try{
+            critSfx.currentTime = 0;
+            critSfx.play();
+          }catch(e){}
+        } else {
+          spawnBlood(rb.x, rb.y, 1.0);
+        }
+
+        // ✅ 몹 피격 효과음
+        try{
+          hitSfx.currentTime = 0;
+          hitSfx.play();
+        }catch(e){}
+
+        // ✅ 공격 효과음 재생
+        try{
+          attackSfx.currentTime = 0;
+          attackSfx.play();
+        }catch(e){}
+
+        // ✅ 1/10 확률 기합음
+        if (Math.random() < 0.1){
+          try{
+            kihapSfx.currentTime = 0;
+            kihapSfx.play();
+          }catch(e){}
+        }
+
+        if (rb.hp <= 0){
+          rb.hp = 0;
+          rb.state = 'dead';
+          // ✅ EXP 획득 (몹마다 expGive 만큼)
+          player.exp += (rb.expGive || R.expGive || 0);
+
+          // ✅ 레벨업: EXP가 최대치를 넘으면 레벨 증가 (초과분 이월) (최대 Lv100)
+          while (player.expMax > 0 && player.exp >= player.expMax){
+            player.exp -= player.expMax;
+            if (!levelUpOnce()){
+              break;
+            }
+          }
+
+
+          // ✅ 토끼 사망 효과음
+          try{
+            rabbitDeathSfx.currentTime = 0;
+            rabbitDeathSfx.play();
+          }catch(e){}
+        } else {
+          rb.state = 'attack';
+        }
+        return;
+      }
+    }
+  }
+
+  function rabbitAttack(rb){
+    if (player.state !== 'alive') return;
+    if (rb.atkCooldown > 0) return;
+    rb.atkCooldown = R.atkInterval;
+    if (!rollHit(rb.hit||0, player.eva||0)){
+    // ✅ 회피 파티클(플레이어 몸에서 점점 커지며 사라짐)
+    spawnWordText(player.x, player.y - 24, "회피", "rgba(170, 255, 120, 0.98)");
+    return;
+  }
+  const taken = calcDamage((rb.atk || rb.dmg || R.dmg || 0), (player.def||0), rb.critChance||0, rb.critMult||1.5);
+  player.hp = Math.max(0, player.hp - taken);
+
+    // ✅ 플레이어 피격 수치 파티클(팍 + 위로)
+    spawnDmgText(player.x, player.y - 22, taken, "rgba(255,70,70,0.98)", false);
+    spawnBlood(player.x, player.y - 6);
+
+    if (player.hp <= 0){
+      player.hp = 0;
+      player.state = 'dead';
+
+      // ✅ 플레이어 사망 효과음
+      try{
+        deathSfx.currentTime = 0;
+        deathSfx.play();
+      }catch(e){}
+    }
+  }
+
+  // ====== UPDATE ======
+  function updatePlayer(dt){
+    if (player.state === 'dead'){
+      player.alpha = Math.max(0, player.alpha - R.fadeSpeed * dt);
+      if (player.alpha <= 0){
+        player.state = 'respawn';
+        player.respawnT = player.respawnDelay;
+      }
+      return;
+    }
+    if (player.state === 'respawn'){
+      player.respawnT -= dt;
+
+      if (player.respawnT <= 0){
+        player.state = 'alive';
+        applyPlayerStatsForLevel();
+        recalcCombatStats();
+        player.alpha = 1;
+        player.hp = player.hpMax;
+        player.mp = player.mpMax;
+        player.x = MAP_W/2;
+        player.y = MAP_H/2;
+
+        player.dir = DIR.DOWN;   // 항상 아래 방향으로 스폰
+
+        player.attacking = false;
+        player.atkCooldown = 0;
+
+        player.auto = false;                 // 즉시 자동사냥 OFF
+        player.autoDelay = player.autoDelayTime; // 1초 카운트 시작
+      }
+      return;
+    }
+
+    player.atkCooldown = Math.max(0, player.atkCooldown - dt);
+
+    
+let mvx = 0, mvy = 0;
+let moving = false;
+
+// 1) 키보드 이동 (기존)
+if (manualMove){
+  if (keys['ArrowUp'] || keys['w'] || keys['W'])    { mvy -= 1; moving = true; }
+  if (keys['ArrowDown'] || keys['s'] || keys['S']) { mvy += 1; moving = true; }
+  if (keys['ArrowLeft'] || keys['a'] || keys['A']) { mvx -= 1; moving = true; }
+  if (keys['ArrowRight'] || keys['d'] || keys['D']){ mvx += 1; moving = true; }
+  const len = Math.hypot(mvx,mvy) || 1;
+  mvx /= len; mvy /= len;
+  if (moving && !player.attacking) player.dir = vecToDir(mvx,mvy);
+
+// 2) 가상 조이스틱 이동 (모바일/PC 공용)
+} else if (joy.active && joy.mag > joy.deadZone){
+  mvx = joy.vx * joy.mag;
+  mvy = joy.vy * joy.mag;
+  moving = true;
+  if (!player.attacking) player.dir = vecToDir(mvx,mvy);
+
+// 3) 자동사냥 이동
+} else if (player.auto){
+      const target = nearestAliveRabbit();
+      if (target){
+        const dx = target.x - player.x, dy = target.y - player.y;
+        const d = Math.hypot(dx,dy) || 1;
+        const nx = dx/d, ny = dy/d;
+
+        if (d*d <= CONTACT2 * 1.05){
+          mvx = 0; mvy = 0;
+          moving = false;
+          tryPlayerAttack();
+        } else {
+          mvx = nx; mvy = ny;
+          moving = true;
+          if (!player.attacking) player.dir = vecToDir(mvx,mvy);
+        }
+      }
+    }
+
+    const spd = player.attacking ? player.speed * 0.35 : player.speed;
+    player.x += mvx * spd;
+    player.y += mvy * spd;
+
+    player.x = clamp(player.x, player.r, MAP_W - player.r);
+    player.y = clamp(player.y, player.r, MAP_H - player.r);
+
+    player.animT += dt;
+
+    if (player.attacking){
+      if (player.animT >= 1/14){
+        player.animT = 0;
+        player.atkFrame++;
+        if (player.atkFrame >= ATK_LEN){
+          player.attacking = false;
+          player.atkFrame = 0;
+        }
+      }
+    } else if (moving){
+      if (player.animT >= 1/10){
+        player.animT = 0;
+        player.walkFrame = (player.walkFrame + 1) % WALK_LEN;
+      }
+
+      // ✅ 발소리 재생 (이동 중 일정 간격)
+      const now = performance.now() / 1000;
+      if (now - lastStepTime > STEP_INTERVAL){
+        try{
+          footstep.currentTime = 0;
+          footstep.play();
+        }catch(e){}
+        lastStepTime = now;
+      }
+
+    } else {
+      player.walkFrame = 0;
+    }
+  }
+
+  function animateRabbitWalk(rb, dt){
+    rb.tAnim += dt;
+    if (rb.tAnim >= 1/R.animFPS){
+      rb.tAnim = 0;
+      rb.frame = (rb.frame + 1) % 4;
+    }
+  }
+
+  function updateRabbits(dt){
+    const d2 = R.detectRadius*R.detectRadius;
+    const g2 = R.giveUpRadius*R.giveUpRadius;
+
+    for (const rb of rabbits){
+      if (rb.state === 'respawn'){
+        rb.respawnT -= dt;
+        if (rb.respawnT <= 0) rabbitRespawn(rb);
+        continue;
+      }
+
+      if (rb.state === 'dead'){
+        rb.alpha = Math.max(0, rb.alpha - R.fadeSpeed * dt);
+        if (rb.alpha <= 0){
+          rb.state = 'respawn';
+          rb.respawnT = R.respawnDelay;
+        }
+        continue;
+      }
+
+      rb.atkCooldown = Math.max(0, rb.atkCooldown - dt);
+
+      const dd = dist2(rb.x, rb.y, player.x, player.y);
+      const touching = dd <= CONTACT2;
+
+      if (touching){
+        // 이동은 멈추지만 스프라이트 걷기 모션은 계속
+        rb.state = 'attack';
+        rb.vx = 0; rb.vy = 0;
+
+        // 방향은 플레이어를 바라보게
+        rb.dir = vecToDir(player.x - rb.x, player.y - rb.y);
+
+        // 모션 계속
+        animateRabbitWalk(rb, dt);
+
+        rabbitAttack(rb);
+      } else {
+        if (rb.state === 'wander' && dd <= d2) rb.state = 'chase';
+        if (rb.state === 'chase' && dd >= g2) { rb.state = 'wander'; pickWander(rb); }
+
+        let mvx=0, mvy=0, spd=0;
+
+        if (rb.state === 'chase'){
+          const dx = player.x - rb.x, dy = player.y - rb.y;
+          const len = Math.hypot(dx,dy) || 1;
+          mvx = dx/len; mvy = dy/len; spd = R.speedChase;
+        } else {
+          rb.tWander -= dt;
+          if (rb.tWander <= 0) pickWander(rb);
+          mvx = rb.vx; mvy = rb.vy; spd = R.speedWander;
+        }
+
+        rb.x += mvx*spd;
+        rb.y += mvy*spd;
+
+        rb.x = clamp(rb.x, R.r, MAP_W-R.r);
+        rb.y = clamp(rb.y, R.r, MAP_H-R.r);
+
+        const moving = (Math.abs(mvx)+Math.abs(mvy))>0.01;
+        if (moving) rb.dir = vecToDir(mvx,mvy);
+
+        if (moving) animateRabbitWalk(rb, dt);
+        else rb.frame = 0;
+      }
+    }
+
+    // 토끼끼리 분리
+    for (let i=0;i<rabbits.length;i++){
+      const a = rabbits[i];
+      if (a.state === 'dead' || a.state === 'respawn') continue;
+      for (let j=i+1;j<rabbits.length;j++){
+        const b = rabbits[j];
+        if (b.state === 'dead' || b.state === 'respawn') continue;
+        resolveCircle(a,b,R.r*2);
+        a.x = clamp(a.x, R.r, MAP_W-R.r); a.y = clamp(a.y, R.r, MAP_H-R.r);
+        b.x = clamp(b.x, R.r, MAP_W-R.r); b.y = clamp(b.y, R.r, MAP_H-R.r);
+      }
+    }
+
+    // 플레이어-토끼 분리
+    for (const rb of rabbits){
+      if (rb.state === 'dead' || rb.state === 'respawn') continue;
+      resolveCircleStatic(player, rb, player.r + R.r);
+      player.x = clamp(player.x, player.r, MAP_W-player.r);
+      player.y = clamp(player.y, player.r, MAP_H-player.r);
+      rb.x = clamp(rb.x, R.r, MAP_W-R.r);
+      rb.y = clamp(rb.y, R.r, MAP_H-R.r);
+    }
+  }
+
+  // ====== DRAW ======
+  function drawGrass(camX, camY, vw, vh){
+    const startTX = Math.floor(camX / TILE);
+    const startTY = Math.floor(camY / TILE);
+    const endTX = Math.ceil((camX + vw) / TILE);
+    const endTY = Math.ceil((camY + vh) / TILE);
+
+    for (let ty = startTY; ty < endTY; ty++){
+      for (let tx = startTX; tx < endTX; tx++){
+        const wx = tx*TILE, wy = ty*TILE;
+        ctx.drawImage(grassImg, 0, 0, grassImg.width, grassImg.height,
+                      wx - camX, wy - camY, TILE, TILE);
+      }
+    }
+  }
+
+  function drawRabbit(rb, camX, camY){
+    if (!(rabbitImg.complete && rabbitImg.naturalWidth>0)) return;
+
+    const col = rb.frame;
+    const row = rb.dir;
+    const sx = rb.x - camX - R.fw/2;
+    const sy = rb.y - camY - R.fh/2;
+
+    ctx.save();
+    ctx.globalAlpha = rb.alpha;
+
+    ctx.drawImage(rabbitImg, col*R.fw, row*R.fh, R.fw, R.fh,
+                  Math.round(sx), Math.round(sy), R.fw, R.fh);
+
+    
+    // ✅ 토끼 닉네임 표시 (머리 위)
+    ctx.font = "bold 11px system-ui, -apple-system, 'Segoe UI', sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "bottom";
+
+    // 그림자
+    ctx.fillStyle = "rgba(0,0,0,0.6)";
+    ctx.fillText(
+      "토끼",
+      Math.round(rb.x - camX),
+    Math.round(rb.y - camY - R.fh/2 + 28)
+    );
+
+    // 본문 텍스트
+    ctx.fillStyle = "#ffffff";
+    ctx.fillText(
+      "토끼",
+      Math.round(rb.x - camX),
+     Math.round(rb.y - camY - R.fh/2 + 28)
+    );
+// HP바 딱 붙게
+    if (rb.state !== 'respawn' && rb.alpha > 0){
+    ctx.fillStyle = "#ffffff";
+      
+
+      const bw = 22, bh = 4;
+      const bx = (rb.x - camX) - bw/2;
+      const by = (rb.y - camY) - R.fh/2 - bh + 13;
+      drawHpBar(bx, by, bw, bh, rb.hp/rb.hpMax, "rgba(255,120,120,1)");
+    }
+
+    ctx.restore();
+  }
+
+  function drawPlayer(camX, camY){
+    if (!(heroImg.complete && heroImg.naturalWidth>0)) return;
+
+    const col = player.attacking ? (ATK_START + player.atkFrame) : (WALK_START + player.walkFrame);
+    const sx = player.x - camX - HERO_FW/2;
+    const sy = player.y - camY - HERO_FH/2;
+
+    ctx.save();
+    ctx.globalAlpha = player.alpha;
+
+    ctx.drawImage(heroImg, col*HERO_FW, player.dir*HERO_FH, HERO_FW, HERO_FH,
+                  Math.round(sx), Math.round(sy), HERO_FW, HERO_FH);
+
+    if (player.state !== 'respawn' && player.alpha > 0){
+      const bw = 28, bh = 5;
+      const bx = (player.x - camX) - bw/2;
+      const by = (player.y - camY) - HERO_FH/2 - bh - 1;
+
+      // ▶ Level text above HP bar
+      ctx.font = "bold 11px system-ui, -apple-system, 'Segoe UI', sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "bottom";
+      ctx.fillStyle = "rgba(0,0,0,0.6)";
+      ctx.fillText(`Lv: ${player.level}`, Math.round(player.x - camX), Math.round(by - 4));
+      ctx.fillStyle = "#ffffff";
+      ctx.fillText(`Lv: ${player.level}`, Math.round(player.x - camX), Math.round(by - 5));
+
+      drawHpBar(bx, by, bw, bh, player.hp/player.hpMax, "rgba(150,255,150,1)");
+    }
+
+    ctx.restore();
+  }
+
+  function drawTrees(camX, camY){
+    if (!(treeImg.complete && treeImg.naturalWidth > 0)) return;
+    for (const t of trees){
+      ctx.drawImage(
+        treeImg,
+        t.x - camX - TREE_SIZE/2,
+        t.y - camY - TREE_SIZE,
+        TREE_SIZE,
+        TREE_SIZE
+      );
+    }
+  }
+
+  // ====== LOOP ======
+  let last = performance.now();
+
+
+  let hitStopT = 0; // ✅ 히트스톱 타이머(초)
+  function startGame(){
+    if (started) return;
+    started = true;
+
+    R.fw = Math.floor(rabbitImg.naturalWidth / R.cols);
+    R.fh = Math.floor(rabbitImg.naturalHeight / R.rows);
+    spawnRabbits();
+    spawnTrees();
+
+    last = performance.now();
+    requestAnimationFrame(loop);
+  }
+
+  function loop(t){
+    const rawDt = Math.min(0.05, (t-last)/1000);
+    last = t;
+
+    // ✅ 히트스톱: 잠깐(0.05초) 시간 정지(업데이트 0으로)
+    if (hitStopT > 0){
+      hitStopT = Math.max(0, hitStopT - rawDt);
+    }
+    const dt = (hitStopT > 0) ? 0 : rawDt;
+
+    updatePlayer(dt);
+
+    // 자동사냥 지연 처리
+    if (player.autoDelay > 0){
+      player.autoDelay -= dt;
+      if (player.autoDelay <= 0){
+        player.auto = true; // 1초 후 자동사냥 ON
+      }
+    }
+
+
+    updateRabbits(dt);
+    updateParticles(dt);
+    updateDmgTexts(dt);
+    updateWordTexts(dt);
+    updateCritTexts(dt);
+
+    // 전투 판정: 플레이어가 살아있고, 접촉 거리 내 살아있는 토끼가 있거나 플레이어가 공격 모션이면 전투로 간주
+    let inCombat = false;
+    if (player.state === 'alive'){
+      if (player.attacking) {
+        inCombat = true;
+      } else {
+        for (const rb of rabbits){
+          if (rb.state === 'dead' || rb.state === 'respawn' || rb.hp <= 0) continue;
+          const dx = rb.x - player.x, dy = rb.y - player.y;
+          if (dx*dx + dy*dy <= CONTACT2 * 1.05){ inCombat = true; break; }
+        }
+      }
+    }
+    applyChatCombatFade(false);
+
+    updateHud();
+
+    draw();
+    requestAnimationFrame(loop);
+  }
+
+  function spawnTrees(){
+    trees.length = 0;
+
+    const MIN_TREE_DIST = TREE_SIZE * 0.75;
+    const MAX_TRIES_PER_TREE = 80;
+
+    function pickPosOutside(){
+      let x, y;
+      const side = Math.floor(Math.random()*4); // 0~3
+
+      if (side === 0) { // 위
+        x = rand(-OUT_MARGIN, MAP_W + OUT_MARGIN);
+        y = rand(-OUT_MARGIN, -20);
+      } else if (side === 1) { // 아래
+        x = rand(-OUT_MARGIN, MAP_W + OUT_MARGIN);
+        y = rand(MAP_H + 20, MAP_H + OUT_MARGIN);
+      } else if (side === 2) { // 왼쪽
+        x = rand(-OUT_MARGIN, -20);
+        y = rand(-OUT_MARGIN, MAP_H + OUT_MARGIN);
+      } else { // 오른쪽
+        x = rand(MAP_W + 20, MAP_W + OUT_MARGIN);
+        y = rand(-OUT_MARGIN, MAP_H + OUT_MARGIN);
+      }
+      return {x, y};
+    }
+
+    function isFarEnough(x, y){
+      for (const t of trees){
+        const dx = x - t.x, dy = y - t.y;
+        if (dx*dx + dy*dy < MIN_TREE_DIST*MIN_TREE_DIST) return false;
+      }
+      return true;
+    }
+
+    for (let i=0;i<TREES_N;i++){
+      let placed = false;
+
+      for (let tries=0; tries<MAX_TRIES_PER_TREE; tries++){
+        const p = pickPosOutside();
+        if (isFarEnough(p.x, p.y)){
+          trees.push(p);
+          placed = true;
+          break;
+        }
+      }
+      if (!placed) trees.push(pickPosOutside());
+    }
+  }
+
+  function draw(){
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    const {camX, camY, vw, vh} = camera();
+
+    drawGrass(camX, camY, vw, vh);
+
+    ctx.save();
+    ctx.globalAlpha = 0.5;
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = "#7CFC00";
+    const radius = 24; // 모서리 둥글기
+    ctx.beginPath();
+    ctx.roundRect(-camX, -camY, MAP_W, MAP_H, radius);
+    ctx.stroke();
+    ctx.restore();
+
+    const drawList = [];
+    for (const rb of rabbits) drawList.push({y: rb.y, type:'rb', ref: rb});
+    drawList.push({y: player.y, type:'pl', ref: player});
+    drawList.sort((a,b)=>a.y-b.y);
+
+    for (const it of drawList){
+      if (it.type === 'rb') drawRabbit(it.ref, camX, camY);
+      else drawPlayer(camX, camY);
+    }
+
+    drawParticles(camX, camY);
+    drawDmgTexts(camX, camY);
+    drawCritTexts(camX, camY);
+    drawWordTexts(camX, camY);
+    drawTrees(camX, camY);
+  }
+
+  // ====== START BUTTON: overlay hide + fullscreen + game start ======
+  async function goFullscreen(){
+    try{
+      // 모바일/데스크탑 모두 대응
+      if (!document.fullscreenElement){
+        await document.documentElement.requestFullscreen({ navigationUI: "hide" }).catch(()=>{});
+      }
+    }catch(e){}
+  }
+
+  startBtn.disabled = true;
+  startHint.textContent = "리소스 로딩 중... (hero/grass/rabbit/tree)";
+
+  startBtn.addEventListener('click', async () => {
+
+    // ✅ BGM 시작 (모바일/PC 사용자 클릭 이벤트 내)
+    try{
+      bgm.currentTime = 0;
+      bgm.play();
+    }catch(e){}
+
+    // 1) 전체화면 시도
+    await goFullscreen();
+
+    // 2) 바로 리사이즈 (주소창/안전영역 변화 대응)
+    setTimeout(resize, 50);
+    setTimeout(resize, 250);
+
+    // 3) 타이틀 화면 제거
+    overlay.style.display = "none";
+    applyChatCombatFade(false);
+
+    // 4) 로딩이 끝났으면 시작, 아니면 로딩 완료 즉시 시작
+    if (assetsReady){
+      startGame();
+    } else {
+      startHint.textContent = "로딩이 끝나면 자동으로 시작됩니다...";
+      const wait = setInterval(() => {
+        if (assetsReady){
+          clearInterval(wait);
+          startGame();
+        }
+      }, 60);
+    }
+  }, {passive:true});
+
+  // ESC로 전체화면이 풀려도 게임은 계속 (원하면 여기서 처리 가능)
+})();
+
+  
+  // ====== TWITCH CHAT HUD ======
+  // ※ file:// 로 직접 열면 Twitch가 parent 파라미터 때문에 차단될 수 있어요.
+  //    GitHub Pages/서버에서 열면 정상 동작합니다.
+  const TWITCH_CHANNEL = "lastkan1111"; // ✅ 여기 채널명만 바꾸면 됩니다.
+
+  function initTwitchChat(){
+    const frame = document.getElementById('twChatFrame');
+    if (!frame) return;
+
+    const parents = [];
+    const h = location.hostname;
+
+    if (h) parents.push(h);
+    // 로컬 개발 보강 (file:// 로 열면 호스트가 비어 CSP에 걸립니다)
+    parents.push('localhost', '127.0.0.1');
+
+    const parentParams = parents
+      .filter((v,i,a)=>v && a.indexOf(v)===i)
+      .map(p => `parent=${encodeURIComponent(p)}`)
+      .join('&');
+
+    frame.src = `https://www.twitch.tv/embed/${encodeURIComponent(TWITCH_CHANNEL)}/chat?${parentParams}&darkpopout`;
+  }
+
+
+
+// ====== TWITCH CHAT HUD RESIZE (drag the corner) ======
+(function enableChatResize(){
+  const hud = document.getElementById('twChatHud');
+  const handle = document.getElementById('twResizeHandle');
+  if (!hud || !handle) return;
+
+  const KEY_W = 'twChatHud_w';
+  const KEY_H = 'twChatHud_h';
+
+  const clamp = (v,a,b)=>Math.max(a, Math.min(b, v));
+
+  function applySize(w, h){
+    const maxW = Math.min(520, window.innerWidth - 24);
+    const maxH = Math.min(820, window.innerHeight - 24);
+    const minW = 160;
+    const minH = 220;
+
+    const ww = clamp(Math.round(w), minW, maxW);
+    const hh = clamp(Math.round(h), minH, maxH);
+
+    hud.style.width  = ww + 'px';
+    hud.style.height = hh + 'px';
+
+    try{
+      localStorage.setItem(KEY_W, String(ww));
+      localStorage.setItem(KEY_H, String(hh));
+    }catch(_){}
+  }
+
+  // Load saved size (if any)
+  try{
+    const sw = parseInt(localStorage.getItem(KEY_W) || '', 10);
+    const sh = parseInt(localStorage.getItem(KEY_H) || '', 10);
+    if (Number.isFinite(sw) && Number.isFinite(sh)) applySize(sw, sh);
+  }catch(_){}
+
+  // Keep size valid on rotate/resize
+  window.addEventListener('resize', () => {
+    const rect = hud.getBoundingClientRect();
+    applySize(rect.width, rect.height);
+  }, {passive:true});
+
+  let dragging = false;
+  let pid = null;
+  let startX = 0, startY = 0, startW = 0, startH = 0;
+
+  handle.addEventListener('pointerdown', (e) => {
+    if (e.button != null && e.button !== 0) return; // left click only
+    dragging = true;
+    pid = e.pointerId;
+    startX = e.clientX;
+    startY = e.clientY;
+    const rect = hud.getBoundingClientRect();
+    startW = rect.width;
+    startH = rect.height;
+
+    try{ handle.setPointerCapture(pid); }catch(_){}
+    e.preventDefault();
+    e.stopPropagation();
+  }, {passive:false});
+
+  handle.addEventListener('pointermove', (e) => {
+    if (!dragging || e.pointerId !== pid) return;
+    const dx = e.clientX - startX;
+    const dy = e.clientY - startY;
+   applySize(startW + dx, startH - dy);
+    e.preventDefault();
+    e.stopPropagation();
+  }, {passive:false});
+
+  function end(e){
+    if (!dragging) return;
+    if (pid != null && e.pointerId !== pid) return;
+    dragging = false;
+    pid = null;
+    e.preventDefault();
+    e.stopPropagation();
+  }
+  window.addEventListener('pointerup', end, {passive:false});
+  window.addEventListener('pointercancel', end, {passive:false});
+
+  // Double click/tap handle to reset to default size
+  handle.addEventListener('dblclick', (e) => {
+    applySize(220, 360);
+    e.preventDefault();
+    e.stopPropagation();
+  });
+
+
+// ====== CHAT TOGGLE (fold/unfold with scale+fade) ======
+(function enableChatToggle(){
+  const hud = document.getElementById('twChatHud');
+  const btn = document.getElementById('chatToggleBtn');
+  if (!hud || !btn) return;
+
+  const KEY = 'twChatHud_collapsed';
+
+  function setCollapsed(collapsed){
+    hud.classList.toggle('collapsed', !!collapsed);
+    btn.setAttribute('aria-pressed', String(!collapsed));
+    btn.textContent = collapsed ? '채팅 열기' : '채팅 접기';
+    try{ localStorage.setItem(KEY, collapsed ? '1' : '0'); }catch(_){}
+  }
+
+  // load saved state
+  try{
+    const saved = localStorage.getItem(KEY);
+    if (saved === '1') setCollapsed(true);
+  }catch(_){}
+
+  // click toggles
+  btn.addEventListener('click', (e) => {
+    const nowCollapsed = !hud.classList.contains('collapsed');
+    setCollapsed(nowCollapsed);
+    e.preventDefault();
+    e.stopPropagation(); // ✅ 조이스틱/캔버스 입력으로 안넘김
+  }, {passive:false});
+
+  // ensure button always above, even if fullscreen changes
+  document.addEventListener('fullscreenchange', () => {
+    btn.style.zIndex = '12000';
+  }, {passive:true});
+})();
+
+})();
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", initTwitchChat);
+  } else {
+    initTwitchChat();
+  }
+
+
+function updateHud(){
+  const hpFill=document.getElementById('hpFill');
+  const mpFill=document.getElementById('mpFill');
+  const hpText=document.getElementById('hpText');
+  const mpText=document.getElementById('mpText');
+    const expFill=document.getElementById('expFill');
+  const expText=document.getElementById('expText');
+if(!hpFill||!mpFill||!hpText||!mpText||!window.player) return;
+  const player = window.player;
+  const hpR=player.hpMax?player.hp/player.hpMax:0;
+  const mpR=player.mpMax?player.mp/player.mpMax:0;
+  hpFill.style.transform=`scaleX(${Math.max(0,Math.min(1,hpR))})`;
+  mpFill.style.transform=`scaleX(${Math.max(0,Math.min(1,mpR))})`;
+  hpText.textContent=`${player.hp}/${player.hpMax}`;
+  mpText.textContent=`${player.mp}/${player.mpMax}`;
+
+  if(expFill && expText){
+    const expR=player.expMax?player.exp/player.expMax:0;
+    expFill.style.transform=`scaleX(${Math.max(0,Math.min(1,expR))})`;
+    expText.textContent=`${player.exp}/${player.expMax}`;
+  }}
+
+</script>
+</body>
+</html>
